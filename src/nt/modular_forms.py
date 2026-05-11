@@ -5,7 +5,8 @@ import math
 from nt.elliptic_curves import CurvesRecordFq, IsogenyClass
 from nt.common import legendre, factorize, divisors, euler_phi
 
-class CCuspForm:
+
+class CuspForm:
     def __init__(self, N: int, k: int, use_sage = False) -> None:
         self.N = N
         self.k = k
@@ -46,12 +47,15 @@ class TrFq_SGamma1Nk:
     curves_term: int  # trace computed by our implementation
     val: int  # trace computed by our implementation
     reference_val: int  # computed by sage
+    error: int  # reference_val - val
+    num_curves: int  # total number of curves
+    num_ss_curves: int  # number of supersingular curves
     data: dict[str, int] = None
 
 # caching here
 class HeckeOperator:
 
-    def __init__(self, cusp_form: CCuspForm) -> None:
+    def __init__(self, cusp_form: CuspForm) -> None:
         self.target = cusp_form
         self.data: dict[int, TrFq_SGamma1Nk] = {}  # keyed by q = p**n
         self._curves_cache: dict[int, CurvesRecordFq] = {}  # keyed by q = p**n
@@ -75,23 +79,33 @@ class HeckeOperator:
         if q not in self._curves_cache:
             self._curves_cache[q] = CurvesRecordFq(p, n)
         c_req = self._curves_cache[q]
+
+        isogeny_classes_filtered = [
+            I for t, I in c_req.isogeny_classes
+            if I.n_pts % self.target.N == 0
+        ]
+        
+        # optinal flatent he conductor towers where possible
         curves_term = sum(
-            I.eval_hk(self.target.k-2) * I.eval_torsion(self.target.N)
-            for t, I in c_req.isogeny_classes
+            I.eval_hk(self.target.k - 2) * I.eval_torsion(self.target.N, flatten=True)
+            for I in isogeny_classes_filtered
         )
         eis_term = self.eis_term(q)
         val = -eis_term - curves_term
 
-        ref = None
+        ref = 0
         if self.target.form is not None:
-            ref = self.target.form.hecke_operator(q).trace()
+            ref = int(self.target.form.hecke_operator(q).trace())
 
-            print(self.target.getInfo())
-            print(f"Trace of T_{q} on Sage gives {ref}")
-
+        tota_levels = sum(len(I.get_torsion(self.target.N).conductor_levels) for I in isogeny_classes_filtered)
+        print(f"q={q}, eis_term={eis_term}, curves_term={curves_term}, val={val}, ref={ref}, num_levels={tota_levels}")
+        
         return TrFq_SGamma1Nk(
             eis_term=-eis_term,
             curves_term=curves_term,
             val=val,
             reference_val=ref,
+            error=ref-val,
+            num_curves=0,
+            num_ss_curves=0,
         )

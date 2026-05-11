@@ -20,10 +20,21 @@ from nt.common import (
 from utils.logging import Logger
 
 @dataclass
+class ConductorRecord:
+    """Per-conductor contribution within one isogeny class at level N."""
+    f: int
+    n_curves: int            # h(f), unweighted curve count
+    n_pts_exact_order: int   # |{x in E(F_q)[N] : ord(x) = N}|
+    value: Fraction          # n_pts_exact_order * hw(f), the weighted contribution
+
+
+@dataclass
 class TorsionRecord:
+    """Aggregate torsion data for one isogeny class at level N."""
     n_curves: int
     n_points: int
-    value: Fraction # this is the normalized value total number fo points / aut
+    value: Fraction
+    conductor_levels: list[ConductorRecord]  # per-conductor breakdown (for debugging)
 
 
 class IsogenyClass:
@@ -72,7 +83,7 @@ class IsogenyClass:
         return (
             self.__N_t
             if self.__N_t is not None
-            else ImaginaryQuadraticField.H(self.D_pi)
+            else (ImaginaryQuadraticField.H(self.D_pi) if self.D_pi < 0 else QuaternionAlgebra.H(self.p))
         )
 
     @lru_cache(maxsize=4096)
@@ -82,23 +93,22 @@ class IsogenyClass:
             for j in range(k // 2 + 1)
         ))
 
-    @lru_cache(maxsize=4096)
-    def eval_torsion(self, N: int) -> int:
-        if N not in self.__torsion_records:
-            self.__torsion_records[N] = self._compute_torsion_record(N)
-        return self.__torsion_records[N].value
+    def eval_torsion(self, N: int, flatten: bool = True) -> Fraction:
+        return self._torsion_record(N, flatten).value
 
-    @lru_cache(maxsize=4096)
-    def get_torsion(self, N: int) -> int:
+    def get_torsion(self, N: int, flatten: bool = True) -> TorsionRecord:
+        return self._torsion_record(N, flatten)
+
+
+    def _torsion_record(self, N: int, flatten: bool = True) -> TorsionRecord:
         if N not in self.__torsion_records:
-            self.__torsion_records[N] = self._compute_torsion_record(N)
+            self.__torsion_records[N] = self._compute_torsion_record(N, flatten)
         return self.__torsion_records[N]
 
-    def _l_sylow(self, l:int, f:int) -> dict[int, int]:
-        # NOTE: this returns the exponents only
+    def _l_sylow(self, l: int, f: int) -> tuple[int, int]:
         hf = max(0, vl(self.f_pi, l) - vl(f, l))
-        r1 = min(hf, vl(self.n_pts, l) // 2, hf)
-        return (r1, (vl(self.n_pts, l) - r1))
+        r1 = min(hf, vl(self.n_pts, l) // 2)  # hf was listed twice before
+        return (r1, vl(self.n_pts, l) - r1)
 
     def _full_group_structure(self, f: int) -> tuple[int, int]:
         """Full invariants (e1, e2) of E(F_q) for curves with conductor f."""
@@ -116,7 +126,7 @@ class IsogenyClass:
             self.__group_cache[f] = (e1, e2)
         return self.__group_cache[f]
 
-    def _torsion_subgroup(self, f: int, N: int) -> tuple[int, int]:
+    def _torsion_subgroup(self, f: int, N: int, compute_full:bool = False) -> tuple[int, int]:
         """N-torsion subgroup invariants for curves with conductor f.
 
         Uses the cached full group structure if available (gcd path),
@@ -124,8 +134,9 @@ class IsogenyClass:
         """
         if f in self.__group_cache:
             e1, e2 = self.__group_cache[f]
+        elif self.is_quaternion or compute_full:
+            e1, e2 = self._full_group_structure(f) # we can not use conductors for the quaternion
         else:
-            # full structure not yet computed — only iterate primes of N
             e1, e2 = 1, 1
             for p, _ in factorize(N):
                 r1, r2 = self._l_sylow(p, f)
@@ -133,48 +144,46 @@ class IsogenyClass:
                 e2 *= p ** r2
         return (math.gcd(N, e1), math.gcd(N, e2))
 
-    def _compute_torsion_record(self, N: int) -> int:
-        # TODO filter
+    def _compute_torsion_at(self, f: int, N: int, H_coprime: int, compute_full: bool = False) -> ConductorRecord:
+        torsion_inv = self._torsion_subgroup(f, N, compute_full)
+        n_pts = elements_of_exact_order(N, torsion_inv[0], torsion_inv[1])
+        return ConductorRecord(
+            f=f,
+            n_curves=self.field.h(f) * H_coprime,
+            n_pts_exact_order=n_pts,
+            value=n_pts * self.field.hw(f),
+        )
 
+    def _compute_torsion_record(self, N: int, flatten: bool = True) -> TorsionRecord:
         if self.n_pts % N != 0:
-            return TorsionRecord(n_curves=0, n_points=0, value=Fraction(0))
+            return TorsionRecord(n_curves=0, n_points=0, value=Fraction(0), conductor_levels=[])
 
-        f_list = divisors(self.f_pi)
-        n_curves_total = 0
-        n_pts_total = 0
+        # Strip p-part unconditionally — conductors divisible by p are always excluded
+        # TODO: need to double check this applies to not only SS
+        f_pi_iter = self.f_pi // self.p ** vl(self.f_pi, self.p)
+        H_coprime = 1
 
-        clr = Logger.SUCCESS if len(factorize(self.f_pi)) > 1 else Logger.WARNING
-        if not self.ordinary:
-            clr = Logger.NOTICE
-        Logger.cprint(
-            f"Computing torsion contribution for isogeny class with t={self.t}, N_pts={fmt_factored(self.n_pts)}, f_pi={fmt_factored(self.f_pi)}, D_K={fmt_factored(self.field.D)} ordinary={self.ordinary}",
-            clr,
+        # Flatten: collapse the N-coprime part of f_pi into a scalar H_coprime.
+        # Only valid for generic imaginary quadratic fields (D_K < -4) — Eisenstein
+        # and Gaussian fields have non-standard aut groups at f=1 that break
+        # multiplicativity of h(O_f) in the coprime tower.
+        can_flatten = flatten and not self.is_quaternion and self.field.D < -4
+        if can_flatten:
+            f_pi_N_part = math.prod(ell ** vl(f_pi_iter, ell) for ell, _ in factorize(N))
+            coprime_part = f_pi_iter // f_pi_N_part
+            if coprime_part > 1:
+                H_coprime = self.field.Hf(coprime_part) // self.field.h(1)
+            f_pi_iter = f_pi_N_part
+
+        f_list = divisors(f_pi_iter)
+        conductor_levels = [self._compute_torsion_at(f, N, H_coprime) for f in f_list]
+
+        return TorsionRecord(
+            n_curves=sum(c.n_curves for c in conductor_levels),
+            n_points=sum(c.n_curves * c.n_pts_exact_order for c in conductor_levels),
+            value=sum(c.value for c in conductor_levels),
+            conductor_levels=conductor_levels,
         )
-
-        value_total = Fraction(0)
-        for f in f_list:
-            if not self.ordinary and f % self.p == 0:
-                continue
-
-            inv = self._full_group_structure(f)
-            N_torsion = self._torsion_subgroup(f, N)
-
-            n_curves = self.field.h(f)
-            n_pts_exact_order = elements_of_exact_order(N, inv[0], inv[1])
-            level_value = n_pts_exact_order * self.field.hw(f)
-
-            print(
-                f"f={fmt_factored(f)}, inv={fmt_invariants(inv)}, N_torsion={fmt_invariants(N_torsion)}, h={n_curves}, hw={self.field.hw(f)}, level_value={level_value}"
-            )
-            # for global accum
-            n_curves_total += n_curves
-            n_pts_total += n_curves * n_pts_exact_order
-            value_total += level_value
-
-        rec = TorsionRecord(
-            n_curves=n_curves_total, n_points=n_pts_total, value=value_total
-        )
-        return rec
 
 
 class CurvesRecordFq:

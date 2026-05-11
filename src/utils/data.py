@@ -15,6 +15,9 @@ class ResultData(Data):
     width: int = 0  # 0 = auto; set explicitly when value contains ANSI codes
 
     def formatted(self) -> str:
+        if self.fmt == "factors":
+            from nt.common import fmt_factored
+            return fmt_factored(int(self.value))
         return format(self.value, self.fmt) if self.fmt else str(self.value)
 
     def __str__(self) -> str:

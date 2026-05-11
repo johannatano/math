@@ -6,39 +6,42 @@ import time
 
 from sympy import primerange
 
-from nt.modular_forms import CCuspForm, HeckeOperator
+from nt.modular_forms import CuspForm, HeckeOperator
 from utils.data import ResultData as Data
 from utils.logging import Logger
 
 
-def compute(p, n, N, k):
-    q = p**n
-    result = [Data(label="q", value=q)]
-    # tr = hecke.compute_trace(p, n)
-    return result
-
+def format_result_data(data: TrFq_SGamma1Nk) -> list[Data]:
+    return [
+        Data("Eis", data.eis_term),
+        Data("Curves", data.curves_term),
+        Data("Trace", data.val),
+        Data("Sage ref", data.reference_val),
+        Data("Error", data.error, fmt="factors"),  # , fmt="factors"
+        Data("NC", data.num_curves),
+        Data("NSS", data.num_ss_curves),
+    ]
 
 def run():
     args = parse_args()
     start_t = time.time()
-
-    hecke = HeckeOperator(CCuspForm(args.N, args.k, args.sage))
+    hecke_op = HeckeOperator(CuspForm(args.N, args.k+2, args.sage))
 
     results = []
     if args.p == -1:
         primes = list(primerange(args.pmin, args.pmax + 1))
         if args.random:
-            results.append(hecke.trace(random.choice(primes), 1))
+            results.append(format_result_data(hecke_op.trace(random.choice(primes), 1)))
         else:
             for p in primes:
-                results.append(hecke.trace(p, 1))
+               results.append(format_result_data(hecke_op.trace(p, args.n)))
     else:
-        results.append(hecke.trace(args.p, args.n))
+        results.append(format_result_data(hecke_op.trace(args.p, args.n)))
 
     end_t = time.time()
     q_info = f"q={args.p**args.n}" if args.p > 0 else f"prange={args.pmin}-{args.pmax}"
     Logger.header(f"Results for {q_info}  N={args.N}  k={args.k}  ({end_t - start_t:.3f}s)")
-    #Logger.print_results(results)
+    Logger.print_results(results)
 
 
 def parse_args():

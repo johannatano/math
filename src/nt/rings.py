@@ -6,7 +6,7 @@ from fractions import Fraction
 import math
 from sage.libs.pari import pari
 
-from nt.common import legendre, factorize
+from nt.common import legendre, factorize, divisors
 
 
 # TODO: make small db for this
@@ -85,7 +85,7 @@ class QuaternionOrder(Order):
         """Curve count in Q_{∞,p} weighted with 1/|Aut| (Schoof 1987, Thm 4.6)."""
         if self.f != 1:
             raise NotImplementedError("Non-maximal quaternion orders not implemented")
-        return Fraction(self.K.p - 1, 12)
+        return Fraction(self.K.p - 1, 24)
 
 
 class NumberField:
@@ -164,6 +164,13 @@ class ImaginaryQuadraticField(NumberField):
 
     def _make_order(self, f: int) -> QuadraticOrder:
         return QuadraticOrder(self, f)
+
+    def Hf(self, f: int) -> int:
+        """H(D_K · f²) using cached order class numbers — avoids pari calls.
+
+        H(D_K · f²) = Σ_{e | f} h(O_e)
+        """
+        return sum(self.order(e).h for e in divisors(f))
 
 
 class QuaternionAlgebra(NumberField):
