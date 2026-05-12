@@ -29,6 +29,16 @@ def valuation(n, l):
     return v
 
 
+def coprime_part(n: int, m: int) -> int:
+    """Largest divisor of n coprime to m — strips all primes of m from n."""
+    import math
+    g = math.gcd(n, m)
+    while g > 1:
+        n //= g
+        g = math.gcd(n, m)
+    return n
+
+
 def fmt_invariants(inv: tuple) -> str:
     a, b = fmt_factored(inv[0]), fmt_factored(inv[1])
     return f"({a} \033[33mx\033[0m {b})"
@@ -98,3 +108,9 @@ def elements_of_exact_order(N: int, n1: int, n2: int) -> int:
 
 def sgn(x):
     return 1 if x > 0 else -1 if x < 0 else 0
+
+
+def equiv(a, b):
+    val = a % b
+    return -1 if val == b - 1 else val
+

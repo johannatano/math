@@ -15,6 +15,8 @@ from nt.common import (
     fmt_factored,
     fmt_invariants,
     sgn,
+    equiv,
+    coprime_part,
 )
 
 from utils.logging import Logger
@@ -44,6 +46,8 @@ class IsogenyClass:
         self.n = n
 
         self.t = t
+        self.a_pi = (self.t-self.f_pi) // 2 if self.field.D % 4 == 1 else (self.t // 2)
+
         self.__N_t = N_t
         self.__torsion_records: dict[int, TorsionRecord] = {}   # keyed by N
         self.__group_cache: dict[int, tuple[int, int]] = {}     # f -> full (e1, e2)
@@ -99,7 +103,6 @@ class IsogenyClass:
     def get_torsion(self, N: int, flatten: bool = True) -> TorsionRecord:
         return self._torsion_record(N, flatten)
 
-
     def _torsion_record(self, N: int, flatten: bool = True) -> TorsionRecord:
         if N not in self.__torsion_records:
             self.__torsion_records[N] = self._compute_torsion_record(N, flatten)
@@ -113,16 +116,17 @@ class IsogenyClass:
     def _full_group_structure(self, f: int) -> tuple[int, int]:
         """Full invariants (e1, e2) of E(F_q) for curves with conductor f."""
         if f not in self.__group_cache:
-
             if self.is_quaternion:
                 e1 = self.p**(self.n // 2) - sgn(self.t)
                 e2 = e1
             else:
-                e1, e2 = 1, 1
+                e1 = math.gcd(self.a_pi-1, self.f_pi // f)
+                e2 = self.n_pts // e1
+                '''e1, e2 = 1, 1
                 for p, _ in factorize(self.n_pts):
                     r1, r2 = self._l_sylow(p, f)
                     e1 *= p ** r1
-                    e2 *= p ** r2
+                    e2 *= p ** r2'''
             self.__group_cache[f] = (e1, e2)
         return self.__group_cache[f]
 
@@ -134,24 +138,47 @@ class IsogenyClass:
         """
         if f in self.__group_cache:
             e1, e2 = self.__group_cache[f]
-        elif self.is_quaternion or compute_full:
-            e1, e2 = self._full_group_structure(f) # we can not use conductors for the quaternion
         else:
-            e1, e2 = 1, 1
+            e1, e2 = self._full_group_structure(f)  
+            # elif self.is_quaternion or compute_full:
+            #    e1, e2 = self._full_group_structure(f) # we can not use conductors for the quaternion
+            # _e1 = math.gcd(math.gcd(self.a_pi-1, self.f_pi // f), N )
+            # _e2 = math.gcd(self.n_pts, N // _e1)
+
+            '''e1, e2 = 1, 1
             for p, _ in factorize(N):
                 r1, r2 = self._l_sylow(p, f)
                 e1 *= p ** r1
-                e2 *= p ** r2
+                e2 *= p ** r2'''
+            # inv1 = fmt_invariants((math.gcd(N, e1), math.gcd(N, e2)))
+            # inv_ = fmt_invariants((_e1, _e2))
+            # grp_inv = self._full_group_structure(f)
+            # fmt_invariants(grp_inv)
+
         return (math.gcd(N, e1), math.gcd(N, e2))
 
-    def _compute_torsion_at(self, f: int, N: int, H_coprime: int, compute_full: bool = False) -> ConductorRecord:
+    def _compute_torsion_at(self, f: int, N: int, compute_full: bool = False) -> ConductorRecord:
         torsion_inv = self._torsion_subgroup(f, N, compute_full)
+
+        grp_inv = self._full_group_structure(f)
+        p_inert = (
+            2
+            if (
+                not self.ordinary
+                and not self.is_quaternion
+                and legendre(self.field.D * f**2, self.p) < 0
+            )
+            else 1
+        )
         n_pts = elements_of_exact_order(N, torsion_inv[0], torsion_inv[1])
+        n_curves = self.field.h(f) * p_inert
+        n_curves_weighted = self.field.hw(f) * p_inert
+
         return ConductorRecord(
             f=f,
-            n_curves=self.field.h(f) * H_coprime,
+            n_curves=n_curves,
             n_pts_exact_order=n_pts,
-            value=n_pts * self.field.hw(f),
+            value=n_pts * n_curves_weighted,
         )
 
     def _compute_torsion_record(self, N: int, flatten: bool = True) -> TorsionRecord:
@@ -160,28 +187,46 @@ class IsogenyClass:
 
         # Strip p-part unconditionally — conductors divisible by p are always excluded
         # TODO: need to double check this applies to not only SS
-        f_pi_iter = self.f_pi // self.p ** vl(self.f_pi, self.p)
+        f_pi_reduced = self.f_pi // self.p ** vl(self.f_pi, self.p)
         H_coprime = 1
 
         # Flatten: collapse the N-coprime part of f_pi into a scalar H_coprime.
         # Only valid for generic imaginary quadratic fields (D_K < -4) — Eisenstein
         # and Gaussian fields have non-standard aut groups at f=1 that break
         # multiplicativity of h(O_f) in the coprime tower.
-        can_flatten = flatten and not self.is_quaternion and self.field.D < -4
-        if can_flatten:
-            f_pi_N_part = math.prod(ell ** vl(f_pi_iter, ell) for ell, _ in factorize(N))
-            coprime_part = f_pi_iter // f_pi_N_part
-            if coprime_part > 1:
-                H_coprime = self.field.Hf(coprime_part) // self.field.h(1)
-            f_pi_iter = f_pi_N_part
+        flatten = True
+        # p = 17 test is good
 
-        f_list = divisors(f_pi_iter)
-        conductor_levels = [self._compute_torsion_at(f, N, H_coprime) for f in f_list]
+        clr = Logger.HEADLINE
+        if self.f_pi % N == 0:
+            clr = Logger.FAIL if self.n_pts % (N * N) != 0 else Logger.NOTICE
+        '''Logger.cprint(
+            f"Isogeny class with t={self.t}, f_pi={fmt_factored(self.f_pi)}, n_pts={fmt_factored(self.n_pts)}, N={N}, q equiv N={equiv(self.q,N)}",
+            clr
+        )'''
+
+        can_flatten = flatten and not self.is_quaternion
+        padding = 1
+
+        if can_flatten:
+            coprime = coprime_part(f_pi_reduced, N)
+            f_pi_reduced //= coprime
+            f_list = divisors(f_pi_reduced)
+            '''print(
+                f"Flattening conductor from {fmt_factored(self.f_pi)} to {fmt_factored(f_pi_reduced)}, coprime={fmt_factored(coprime)}, f_list={f_list}"
+            )'''
+            if coprime > 1:
+                H_coprime = self.field.Hf_inv(coprime)
+        else:
+            f_list = divisors(f_pi_reduced)
+        conductor_levels = [
+            self._compute_torsion_at(f, N) for f in f_list
+        ]
 
         return TorsionRecord(
-            n_curves=sum(c.n_curves for c in conductor_levels),
-            n_points=sum(c.n_curves * c.n_pts_exact_order for c in conductor_levels),
-            value=sum(c.value for c in conductor_levels),
+            n_curves= H_coprime * sum(c.n_curves for c in conductor_levels),
+            n_points= H_coprime * sum(c.n_curves * c.n_pts_exact_order for c in conductor_levels),
+            value= H_coprime * sum(c.value for c in conductor_levels),
             conductor_levels=conductor_levels,
         )
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import math
-
 from nt.elliptic_curves import CurvesRecordFq, IsogenyClass
 from nt.common import legendre, factorize, divisors, euler_phi
 
@@ -18,7 +17,8 @@ class CuspForm:
             self.form = CuspForms(Gamma1(N), self.k) if use_sage else None
 
     def getInfo(self):
-        if not self.use_sage:
+        return f"Cusp form"
+        '''if not self.use_sage:
             return f"No Sage form for level {self.N} and weight {self.k}"
         from sage.all import ZZ, CuspForms, Gamma1, ModularForms
         M = ModularForms(Gamma1(self.N), self.k)
@@ -31,8 +31,8 @@ class CuspForm:
         S_old = S.old_submodule()
         S_new = S.new_submodule()
         dim_S_old = S_old.dimension()
-        dim_S_new = S_new.dimension()
-        return f"Cusp form of level {self.N} and weight {self.k}"
+        dim_S_new = S_new.dimension()'''
+        #return f"Cusp form of level {self.N} and weight {self.k}"
 
 
 @dataclass
@@ -51,6 +51,7 @@ class TrFq_SGamma1Nk:
     num_curves: int  # total number of curves
     num_ss_curves: int  # number of supersingular curves
     data: dict[str, int] = None
+    q:int = 1
 
 # caching here
 class HeckeOperator:
@@ -87,7 +88,7 @@ class HeckeOperator:
         
         # optinal flatent he conductor towers where possible
         curves_term = sum(
-            I.eval_hk(self.target.k - 2) * I.eval_torsion(self.target.N, flatten=True)
+            I.eval_hk(self.target.k - 2) * I.eval_torsion(self.target.N, flatten=False)
             for I in isogeny_classes_filtered
         )
         eis_term = self.eis_term(q)
@@ -98,7 +99,7 @@ class HeckeOperator:
             ref = int(self.target.form.hecke_operator(q).trace())
 
         tota_levels = sum(len(I.get_torsion(self.target.N).conductor_levels) for I in isogeny_classes_filtered)
-        print(f"q={q}, eis_term={eis_term}, curves_term={curves_term}, val={val}, ref={ref}, num_levels={tota_levels}")
+        #print(f"q={q}, eis_term={eis_term}, curves_term={curves_term}, val={val}, ref={ref}, num_levels={tota_levels}")
         
         return TrFq_SGamma1Nk(
             eis_term=-eis_term,
@@ -106,6 +107,7 @@ class HeckeOperator:
             val=val,
             reference_val=ref,
             error=ref-val,
-            num_curves=0,
+            num_curves=sum(I.get_torsion(self.target.N).n_curves for I in isogeny_classes_filtered),
             num_ss_curves=0,
+            q=q
         )

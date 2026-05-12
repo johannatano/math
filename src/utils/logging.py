@@ -48,6 +48,7 @@ class Logger:
     WARNING = Colors.BRIGHT_YELLOW
     ERROR = Colors.BRIGHT_RED
     NOTICE = Colors.BRIGHT_MAGENTA
+    NORMAL = Colors.ENDC
 
     @staticmethod
     def cprint(message: str, color: str = "", bold: bool = False) -> None:
@@ -101,7 +102,7 @@ class Logger:
         print("-" * len(header_str))
 
         for row, fmted in zip(rows, all_formatted):
-            clr = color_fn(row) if color_fn else Colors.BOLD
+            clr = Colors.FAIL if any(rd.is_flagged() for rd in row) else (color_fn(row) if color_fn else Colors.BOLD)
             parts = []
             for col, (i, s) in enumerate(zip(visible_indices, fmted)):
                 rd = row[i]

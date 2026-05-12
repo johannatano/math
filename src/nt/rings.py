@@ -50,21 +50,29 @@ class Order:
 
 class QuadraticOrder(Order):
     @cached_property
+    def h_prime_prod(self) -> Fraction:
+        if self.is_maximal:
+            return Fraction(1)
+        result = Fraction(self.f)
+        for p, _ in factorize(self.f):
+            result *= Fraction(p - legendre(self.K.D, p), p)
+        return result
+
+    @cached_property
     def h(self) -> int:
         if self.is_maximal:
             return _class_number(self.K.D)
-        result = Fraction(self.f * self.K.O_K.h, self.unit_index)
-        for p, _ in factorize(self.f):
+        return Fraction(self.K.O_K.h, self.unit_index) * self.h_prime_prod
+        '''for p, _ in factorize(self.f):
             result *= Fraction(p - legendre(self.K.D, p), p)
         assert (
             result.denominator == 1
         ), f"Non-integer class number: D_K={self.K.D}, f={self.f}, result={result}"
-        return int(result)
+        return int(result)'''
 
     @cached_property
     def hw(self) -> int:
         """Returns weight by 1/|Aut| (Schoof 1987, Thm 4.6)."""
-        
         return Fraction(
             self.h, self.K._maximal_unit_index * 2 if self.is_maximal else 2 #this re-normalizes the class number into weighted by aut
         )
@@ -171,6 +179,12 @@ class ImaginaryQuadraticField(NumberField):
         H(D_K · f²) = Σ_{e | f} h(O_e)
         """
         return sum(self.order(e).h for e in divisors(f))
+
+    def Hf_inv(self, f: int) -> int:
+        """H(D_K · f²) using cached order class numbers — avoids pari calls.
+        H'(D_K · f²)  = (Σ_{e | f} h(e)*h(e).unit_idx) // h(1)
+        """
+        return sum(self.order(e).h * self.order(e).unit_index for e in divisors(f)) // self.O_K.h
 
 
 class QuaternionAlgebra(NumberField):

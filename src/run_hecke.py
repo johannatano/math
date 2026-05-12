@@ -13,6 +13,7 @@ from utils.logging import Logger
 
 def format_result_data(data: TrFq_SGamma1Nk) -> list[Data]:
     return [
+        Data("q", data.q, fmt="factors"),
         Data("Eis", data.eis_term),
         Data("Curves", data.curves_term),
         Data("Trace", data.val),
