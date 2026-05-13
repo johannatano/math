@@ -174,10 +174,13 @@ class IsogenyClass:
         n_curves = self.field.h(f) * p_inert
         n_curves_weighted = self.field.hw(f) * p_inert
 
+        print(
+            f"f={f}  n_pts={n_pts}  grp_inv={fmt_invariants(grp_inv)} n_curves={n_curves}"
+        )
         return ConductorRecord(
             f=f,
             n_curves=n_curves,
-            n_pts_exact_order=n_pts,
+            n_pts_exact_order=n_pts * n_curves,
             value=n_pts * n_curves_weighted,
         )
 
@@ -193,7 +196,7 @@ class IsogenyClass:
         # and Gaussian fields have non-standard aut groups at f=1 that break
         # multiplicativity of h(O_f) in the coprime tower.
         flatten = True
-        can_flatten = flatten and not self.is_quaternion
+        can_flatten = flatten and not self.is_quaternion and N > 1
         padding = 1
         if can_flatten:
             coprime = coprime_part(f_pi_reduced, N)
@@ -203,17 +206,16 @@ class IsogenyClass:
                 H_coprime = self.field.Hf_inv(coprime)
         else:
             f_list = divisors(f_pi_reduced)
-            
+
         conductor_levels = [
             self._compute_torsion_at(f, N) for f in f_list
         ]
         rec = TorsionRecord()
         # this is mainly for debugging and inspect data
         for cl in conductor_levels:
-            rec.n_curves += cl.n_curves
-            rec.n_points += cl.n_curves * cl.n_pts_exact_order
-            rec.value += cl.value
-            
+            rec.n_curves += cl.n_curves * H_coprime
+            rec.n_points += cl.n_pts_exact_order * H_coprime
+            rec.value += cl.value * H_coprime
         return rec
 
 
@@ -295,11 +297,8 @@ class CurvesRecordFq:
 
     @cached_property
     def num_curves_total(self) -> Fraction:
-        return Fraction(0) + sum(c.N_t for c in self.isogeny_classes.values())
+        return Fraction(0) + sum(I.size for t, I in self.isogeny_classes)
 
     @cached_property
     def isogeny_classes(self) -> Fraction:
         return self.__isogeny_classes.items()
-
-    def check(self) -> bool:
-        return self.num_curves_total == self.q

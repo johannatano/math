@@ -39,7 +39,6 @@ def _H(D: int) -> int:
     if abs(D) > max_D:
         max_D = abs(D)
         h = _db_lookup(D)
-        print(f"Computing NEW MAX H({D}) h={h}, with pari...")
     h = _db_lookup(D)
     if h is not None:
         return h

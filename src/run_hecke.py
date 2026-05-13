@@ -18,10 +18,10 @@ def format_result_data(data: TrFq_SGamma1Nk) -> list[Data]:
         Data("Eis", data.eis_term),
         Data("Curves", data.curves_term),
         Data("Trace", data.val),
-        Data("Sage ref", data.reference_val),
+        Data("Sage", data.reference_val),
         Data("Error", data.error),  # , fmt="factors"
-        Data("NC", data.num_curves),
-        Data("NSS", data.num_ss_curves),
+        Data("#E", data.num_curves),
+        Data("#P", data.num_points),
     ]
 
 def run():
