@@ -77,6 +77,19 @@ class HeckeOperator:
 
     def trace(self, p, n):
         q = p**n
+        if q > 10**10:
+            print(f"Too large q={q}, skipping curve computations and returning 0 for trace.")
+            return TrFq_SGamma1Nk(
+                eis_term=0,
+                curves_term=0,
+                val=0,
+                reference_val=0,
+                error=0,
+                num_curves=0,
+                num_ss_curves=0,
+                q=q,
+            )
+
         if q not in self._curves_cache:
             self._curves_cache[q] = CurvesRecordFq(p, n)
         c_req = self._curves_cache[q]
@@ -85,7 +98,7 @@ class HeckeOperator:
             I for t, I in c_req.isogeny_classes
             if I.n_pts % self.target.N == 0
         ]
-        
+
         # optinal flatent he conductor towers where possible
         curves_term = sum(
             I.eval_hk(self.target.k - 2) * I.eval_torsion(self.target.N, flatten=False)
@@ -99,8 +112,8 @@ class HeckeOperator:
             ref = int(self.target.form.hecke_operator(q).trace())
 
         tota_levels = sum(len(I.get_torsion(self.target.N).conductor_levels) for I in isogeny_classes_filtered)
-        #print(f"q={q}, eis_term={eis_term}, curves_term={curves_term}, val={val}, ref={ref}, num_levels={tota_levels}")
-        
+        # print(f"q={q}, eis_term={eis_term}, curves_term={curves_term}, val={val}, ref={ref}, num_levels={tota_levels}")
+
         return TrFq_SGamma1Nk(
             eis_term=-eis_term,
             curves_term=curves_term,

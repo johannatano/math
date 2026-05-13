@@ -7,18 +7,19 @@ import time
 from sympy import primerange
 
 from nt.modular_forms import CuspForm, HeckeOperator
+from nt.common import fmt_magnitude
 from utils.data import ResultData as Data
 from utils.logging import Logger
 
 
 def format_result_data(data: TrFq_SGamma1Nk) -> list[Data]:
     return [
-        Data("q", data.q, fmt="factors"),
+        Data("q", data.q),
         Data("Eis", data.eis_term),
         Data("Curves", data.curves_term),
         Data("Trace", data.val),
         Data("Sage ref", data.reference_val),
-        Data("Error", data.error, fmt="factors"),  # , fmt="factors"
+        Data("Error", data.error),  # , fmt="factors"
         Data("NC", data.num_curves),
         Data("NSS", data.num_ss_curves),
     ]
@@ -40,7 +41,9 @@ def run():
         results.append(format_result_data(hecke_op.trace(args.p, args.n)))
 
     end_t = time.time()
-    q_info = f"q={args.p**args.n}" if args.p > 0 else f"prange={args.pmin}-{args.pmax}"
+    
+    q = args.p**args.n if args.p > 0 else f"{args.pmin}-{args.pmax}"
+    q_info = f"q={q} magnitude={fmt_magnitude(q)}" if args.p > 0 else f"prange={args.pmin}-{args.pmax}"
     Logger.header(f"Results for {q_info}  N={args.N}  k={args.k}  ({end_t - start_t:.3f}s)")
     Logger.print_results(results)
 

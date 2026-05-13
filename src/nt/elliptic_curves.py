@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
 from fractions import Fraction
 import math
-
-from nt.rings import ImaginaryQuadraticField, QuaternionAlgebra
+from sage.libs.pari import pari
+from nt.rings import ImaginaryQuadraticField, QuaternionAlgebra, _H
 from nt.common import (
     legendre,
     factorize,
@@ -33,10 +33,10 @@ class ConductorRecord:
 @dataclass
 class TorsionRecord:
     """Aggregate torsion data for one isogeny class at level N."""
-    n_curves: int
-    n_points: int
-    value: Fraction
-    conductor_levels: list[ConductorRecord]  # per-conductor breakdown (for debugging)
+    n_curves: int = 0
+    n_points: int = 0
+    value: Fraction = field(default_factory=Fraction)
+    conductor_levels: list[ConductorRecord] = field(default_factory=list)
 
 
 class IsogenyClass:
@@ -87,7 +87,7 @@ class IsogenyClass:
         return (
             self.__N_t
             if self.__N_t is not None
-            else (ImaginaryQuadraticField.H(self.D_pi) if self.D_pi < 0 else QuaternionAlgebra.H(self.p))
+            else self.field.Hf(self.f_pi)
         )
 
     @lru_cache(maxsize=4096)
@@ -184,51 +184,37 @@ class IsogenyClass:
     def _compute_torsion_record(self, N: int, flatten: bool = True) -> TorsionRecord:
         if self.n_pts % N != 0:
             return TorsionRecord(n_curves=0, n_points=0, value=Fraction(0), conductor_levels=[])
-
         # Strip p-part unconditionally — conductors divisible by p are always excluded
         # TODO: need to double check this applies to not only SS
         f_pi_reduced = self.f_pi // self.p ** vl(self.f_pi, self.p)
         H_coprime = 1
-
         # Flatten: collapse the N-coprime part of f_pi into a scalar H_coprime.
         # Only valid for generic imaginary quadratic fields (D_K < -4) — Eisenstein
         # and Gaussian fields have non-standard aut groups at f=1 that break
         # multiplicativity of h(O_f) in the coprime tower.
         flatten = True
-        # p = 17 test is good
-
-        clr = Logger.HEADLINE
-        if self.f_pi % N == 0:
-            clr = Logger.FAIL if self.n_pts % (N * N) != 0 else Logger.NOTICE
-        '''Logger.cprint(
-            f"Isogeny class with t={self.t}, f_pi={fmt_factored(self.f_pi)}, n_pts={fmt_factored(self.n_pts)}, N={N}, q equiv N={equiv(self.q,N)}",
-            clr
-        )'''
-
         can_flatten = flatten and not self.is_quaternion
         padding = 1
-
         if can_flatten:
             coprime = coprime_part(f_pi_reduced, N)
             f_pi_reduced //= coprime
             f_list = divisors(f_pi_reduced)
-            '''print(
-                f"Flattening conductor from {fmt_factored(self.f_pi)} to {fmt_factored(f_pi_reduced)}, coprime={fmt_factored(coprime)}, f_list={f_list}"
-            )'''
             if coprime > 1:
                 H_coprime = self.field.Hf_inv(coprime)
         else:
             f_list = divisors(f_pi_reduced)
+            
         conductor_levels = [
             self._compute_torsion_at(f, N) for f in f_list
         ]
-
-        return TorsionRecord(
-            n_curves= H_coprime * sum(c.n_curves for c in conductor_levels),
-            n_points= H_coprime * sum(c.n_curves * c.n_pts_exact_order for c in conductor_levels),
-            value= H_coprime * sum(c.value for c in conductor_levels),
-            conductor_levels=conductor_levels,
-        )
+        rec = TorsionRecord()
+        # this is mainly for debugging and inspect data
+        for cl in conductor_levels:
+            rec.n_curves += cl.n_curves
+            rec.n_points += cl.n_curves * cl.n_pts_exact_order
+            rec.value += cl.value
+            
+        return rec
 
 
 class CurvesRecordFq:
@@ -285,7 +271,7 @@ class CurvesRecordFq:
             For char(Fq) > 3, the only permitted SS trace is 0.
             This IsogenyClass will lie in field of D_K = -4p, and all curves will lie in max order, hence: N(t) = H(-4p)
             """
-            ts.append((0, ImaginaryQuadraticField.H(-4 * self.p)))
+            ts.append((0, None))
             """
             For char(Fq) = 2, 3, we get t = pm sqrt(2q) or t = pm sqrt(3q) respectively, producing exactly one curve per such trace, N(t) = 1.
             """

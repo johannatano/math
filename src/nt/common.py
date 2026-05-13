@@ -29,6 +29,15 @@ def valuation(n, l):
     return v
 
 
+def fmt_magnitude(n: int) -> str:
+    """Fast order-of-magnitude label — no factorization, e.g. '~10^6', '~10^4'."""
+    import math
+    if n == 0:
+        return "0"
+    exp = int(math.log10(abs(n)))
+    return f"~10^{exp}"
+
+
 def coprime_part(n: int, m: int) -> int:
     """Largest divisor of n coprime to m — strips all primes of m from n."""
     import math
@@ -58,8 +67,10 @@ def fmt_factored(n):
 
 @lru_cache(maxsize=None)
 def factorize(n):
-    # return list(factorint(n).items())  # → [(2, 2), (3, 1)]
     """Return list of (prime, exponent) pairs for n > 1."""
+    if n > 10**8:
+        from sympy import factorint
+        return list(factorint(n).items())
     factors = []
     d = 2
     while d * d <= n:
