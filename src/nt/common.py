@@ -48,9 +48,10 @@ def coprime_part(n: int, m: int) -> int:
     return n
 
 
-def fmt_invariants(inv: tuple) -> str:
+def fmt_invariants(inv: tuple, color: bool = True) -> str:
     a, b = fmt_factored(inv[0]), fmt_factored(inv[1])
-    return f"({a} \033[33mx\033[0m {b})"
+    x = f"\033[33mx\033[0m" if color else "x"
+    return f"({a} {x} {b})"
 
 
 def fmt_factored(n):

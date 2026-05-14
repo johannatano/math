@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import math
 from nt.elliptic_curves import CurvesRecordFq, IsogenyClass
 from nt.common import legendre, factorize, divisors, euler_phi
+from utils.logging import Logger
 
 
 class CuspForm:
@@ -54,6 +55,7 @@ class TrFq_SGamma1Nk:
     num_ss_curves: int = 0
     num_points: int = 0
     q: int = 0
+    traces: list[int] = None
 
 
 # caching here
@@ -61,8 +63,13 @@ class HeckeOperator:
 
     def __init__(self, cusp_form: CuspForm) -> None:
         self.target = cusp_form
-        self.data: dict[int, TrFq_SGamma1Nk] = {}  # keyed by q = p**n
-        self._curves_cache: dict[int, CurvesRecordFq] = {}  # keyed by q = p**n
+        self.data: dict[int, TrFq_SGamma1Nk] = {}
+        self._curves_cache: dict[int, CurvesRecordFq] = {}  # survives target changes
+
+    def update_target(self, cusp_form: CuspForm) -> None:
+        """Change level/weight without discarding the curves cache."""
+        self.target = cusp_form
+        self.data.clear()
 
     def eis_term(self, q):
         split = 0
@@ -77,6 +84,11 @@ class HeckeOperator:
             if d in (1, 2) and (q + 1) % Nd == 0:
                 non_split += euler_phi(d) * euler_phi(Nd)
         return (split * 1 + non_split * ((-1) ** self.target.k)) // 2
+
+    def get_isogeny_class(self, q: int, t: int):
+        if q not in self._curves_cache:
+            return None
+        return self._curves_cache[q].get_isogeny_class(t)
 
     def trace(self, p, n):
         q = p**n
@@ -97,12 +109,15 @@ class HeckeOperator:
 
         if q not in self._curves_cache:
             self._curves_cache[q] = CurvesRecordFq(p, n)
+
         c_req = self._curves_cache[q]
 
         N, k = self.target.N, self.target.k
         curves_term = 0
         num_curves = 0
         num_points = 0
+        num_ss_curves = 0
+        traces = []
         for _, I in c_req.isogeny_classes:
             if I.n_pts % N != 0:
                 continue
@@ -110,6 +125,8 @@ class HeckeOperator:
             curves_term += I.eval_hk(k - 2) * tor.value
             num_curves += tor.n_curves
             num_points += tor.n_points
+            num_ss_curves += tor.n_curves if not I.ordinary else 0
+            traces.append(_)
 
         eis_term = self.eis_term(q)
         val = -eis_term - curves_term
@@ -125,6 +142,8 @@ class HeckeOperator:
             reference_val=ref,
             error=ref - val,
             num_curves=num_curves,
+            num_ss_curves=num_ss_curves,
             num_points=num_points,
+            traces=traces,
             q=q,
         )

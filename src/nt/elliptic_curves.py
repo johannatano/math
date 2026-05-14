@@ -28,6 +28,8 @@ class ConductorRecord:
     n_curves: int            # h(f), unweighted curve count
     n_pts_exact_order: int   # |{x in E(F_q)[N] : ord(x) = N}|
     value: Fraction          # n_pts_exact_order * hw(f), the weighted contribution
+    torsion_inv: tuple[int, int] = (0, 0)  # N-torsion subgroup invariants (e1, e2)
+    inv: tuple[int, int] = (0, 0)  # full group invariants (e1, e2)
 
 
 @dataclass
@@ -158,9 +160,12 @@ class IsogenyClass:
         return (math.gcd(N, e1), math.gcd(N, e2))
 
     def _compute_torsion_at(self, f: int, N: int, compute_full: bool = False) -> ConductorRecord:
-        torsion_inv = self._torsion_subgroup(f, N, compute_full)
 
         grp_inv = self._full_group_structure(f)
+        torsion_inv = self._torsion_subgroup(f, N, compute_full)
+
+        if self.t == -16:
+            print(f"f={f}, N={N}, grp_inv={grp_inv}, torsion_inv={torsion_inv}")
         p_inert = (
             2
             if (
@@ -173,15 +178,13 @@ class IsogenyClass:
         n_pts = elements_of_exact_order(N, torsion_inv[0], torsion_inv[1])
         n_curves = self.field.h(f) * p_inert
         n_curves_weighted = self.field.hw(f) * p_inert
-
-        print(
-            f"f={f}  n_pts={n_pts}  grp_inv={fmt_invariants(grp_inv)} n_curves={n_curves}"
-        )
         return ConductorRecord(
             f=f,
-            n_curves=n_curves,
-            n_pts_exact_order=n_pts * n_curves,
+            n_curves=n_curves if n_pts > 0 else 0,
+            n_pts_exact_order=n_pts,
             value=n_pts * n_curves_weighted,
+            torsion_inv=torsion_inv,
+            inv=grp_inv,
         )
 
     def _compute_torsion_record(self, N: int, flatten: bool = True) -> TorsionRecord:
@@ -195,7 +198,7 @@ class IsogenyClass:
         # Only valid for generic imaginary quadratic fields (D_K < -4) — Eisenstein
         # and Gaussian fields have non-standard aut groups at f=1 that break
         # multiplicativity of h(O_f) in the coprime tower.
-        flatten = True
+        flatten = False
         can_flatten = flatten and not self.is_quaternion and N > 1
         padding = 1
         if can_flatten:
@@ -210,13 +213,12 @@ class IsogenyClass:
         conductor_levels = [
             self._compute_torsion_at(f, N) for f in f_list
         ]
-        rec = TorsionRecord()
-        # this is mainly for debugging and inspect data
-        for cl in conductor_levels:
-            rec.n_curves += cl.n_curves * H_coprime
-            rec.n_points += cl.n_pts_exact_order * H_coprime
-            rec.value += cl.value * H_coprime
-        return rec
+        return TorsionRecord(
+            n_curves=sum(cl.n_curves * H_coprime for cl in conductor_levels),
+            n_points=sum(cl.n_pts_exact_order * H_coprime for cl in conductor_levels),
+            value=sum(cl.value * H_coprime for cl in conductor_levels),
+            conductor_levels=conductor_levels,
+        )
 
 
 class CurvesRecordFq:
@@ -300,5 +302,8 @@ class CurvesRecordFq:
         return Fraction(0) + sum(I.size for t, I in self.isogeny_classes)
 
     @cached_property
-    def isogeny_classes(self) -> Fraction:
+    def isogeny_classes(self):
         return self.__isogeny_classes.items()
+
+    def get_isogeny_class(self, t: int):
+        return self.__isogeny_classes.get(t)
