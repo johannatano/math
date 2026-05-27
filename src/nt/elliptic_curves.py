@@ -218,6 +218,7 @@ class IsogenyClass:
             )
         if self.n_pts % N != 0:
             return TorsionRecord(n_curves=0, n_points=0, value=Fraction(0), conductor_levels=[])
+
         # Strip p-part unconditionally — conductors divisible by p are always excluded
         # TODO: need to double check this applies to not only SS
         f_pi_reduced = self.f_pi // self.p ** vl(self.f_pi, self.p)
@@ -263,115 +264,157 @@ class IsogenyClass:
                 conductor_levels=conductor_levels,
             )
 
+        # if self.field.D !=-3:
+        #    return TorsionRecord()
+
         total_sum = 1
         conductor_levels = []
         for l, a in factorize(N):
-            vl_E = vl(self.n_pts, l)
-            vl_f_pi = vl(self.f_pi, l)
-            vl_a_pi = vl(self.a_pi - 1, l)
             sum_at_l = 0
+            vl_fpi = vl(self.f_pi, l)
+            l_tower_height = min(vl_fpi, vl(self.a_pi - 1, l), max(0, vl(self.n_pts, l) - a))
+            has_full_inclusion = l_tower_height >= a
 
-            n = min(vl_f_pi, max(0, vl_E - a)) # anything above this yields l**a nmid e2, ie zero pts
-            for i in range(0, n + 1):  # we do NOT stop at e
-                f = l ** (vl_f_pi - i) # current conductor level, stepping from bottom up
-                # now we compute the actual invariants allowed by ring theory
-                e = min(i, vl_a_pi)  # we also need to stop at the point where the group invariants become trivial, since then the number of points of exact order N 
-                if e == a:
+            if has_full_inclusion:
+
+                '''num_non_max_2 = 0
+                num_max_2 = 0
+                for i in range(0, vl_fpi + 1):
+                    f = l ** (vl_fpi - i)
+                    if (
+                        i > vl(self.n_pts, l) - a
+                    ):  # everything above this conductor level has zero l**a torsion, since vl(e1) < a
+                        break
+                    if i == a:
+                        level_sum = jordan_totient(l**a) * self.field.Hf_tilde(f)
+                        # we reached full torsion
+                        #sum_at_l += level_sum
+                        num_max_2 = self.field.Hf_tilde(f)
+                        break
+                    if i == vl(self.a_pi - 1, l):
+
+                        # we reached max torsion allowed
+                        level_sum = l**i * euler_phi(l**a) * self.field.Hf_tilde(f)
+                        #sum_at_l += level_sum
+                        num_non_max_2 += self.field.Hf_tilde(f)
+                        break
+                    num_non_max_2 += 1
+                    # xi = Fraction(l - legendre(self.field.D, l), l)
+                    # xi = Fraction(l - legendre(self.field.D, l), l) if f > 1 else Fraction(1)
+                    # level_sum = l ** (vl(self.f_pi, l)) * euler_phi(l**a) * xi
+                    # sum_at_l += level_sum
+                    # level_sum = l**i * euler_phi(l**a) * self.field.h_tilde(f)
+                    # sum_at_l += level_sum'''
+
+                num_non_max = a
+                num_max = vl_fpi - num_non_max + 1
+                xi = Fraction(l - legendre(self.field.D, l), l)
+                sum_at_l += (
+                    l**vl_fpi * euler_phi(l**a) * xi * num_non_max
+                    + jordan_totient(l**a) * num_max
+                )
+                # = vl(self.f_pi, l)-(a+1)
+            else:
+
+                l_tower_height = min(vl_fpi, max(0, vl(self.n_pts, l) - a)) + 1
+                xi = Fraction(l - legendre(self.field.D, l), l)
+                # this is the total contrib if not full
+                # we have total vl_fpi levels, all contrib equal sum
+                if l_tower_height == vl_fpi + 1:
+                    # we hit f = 1, we need to accoutn for xi at top level
+                    local_level_sum = l**vl_fpi * euler_phi(l**a) * (1 + xi * (l_tower_height - 1))
+                else:
+                    # we ddint hit top level
+                    local_level_sum = l**vl_fpi * euler_phi(l**a) * xi * l_tower_height
+
+
+                sum_at_l += local_level_sum
+                '''l_count = 0
+                local_level_sum_2 = 0
+                for i in range(0, vl_fpi + 1):
+                    f = l ** (vl_fpi - i)
+                    if (
+                        i > vl(self.n_pts, l) - a
+                    ):  # everything above this conductor level has zero l**a torsion, since vl(e1) < a
+                        break
+                    if i == a:
+                        level_sum = jordan_totient(l**a) * self.field.Hf_tilde(f)
+                        # we reached full torsion
+                        # sum_at_l += level_sum
+                        local_level_sum_2 += level_sum
+                        print("BREAKING AT FULL TORSION LEVEL")
+                        break
+                    if i == vl(self.a_pi - 1, l):
+
+                        l_count += 1
+                        xi = Fraction(l - legendre(self.field.D, l), l) if f > 1 else Fraction(1)
+                        _level_sum_main = l ** (vl(self.f_pi, l)) * euler_phi(l**a) * xi
+
+                        # we reached max torsion allowed
+                        level_sum = l**i * euler_phi(l**a) * self.field.Hf_tilde(f)
+                        # sum_at_l += level_sum
+                        local_level_sum_2 += level_sum
+                        print(
+                            f"BREAKING AT WEIL MAX TORSION LEVEL, i={i}, l_tower_height={l_tower_height}, f={f}, xi={xi}, num at this level ={self.field.Hf_tilde(f)}-----"
+                        )
+                        break
+
+                    l_count += 1
+                    xi = Fraction(l - legendre(self.field.D, l), l) if f > 1 else Fraction(1)
+                    level_sum = l ** (vl(self.f_pi, l)) * euler_phi(l**a) * xi
+                    local_level_sum_2 += level_sum'''
+
+                # sum_at_l += level_sum
+                # level_sum = l**i * euler_phi(l**a) * self.field.h_tilde(f)
+                # sum_at_l += l**i * euler_phi(l**a) * self.field.h_tilde(f)
+
+            '''for i in range(0, vl_fpi + 1):
+                f = l ** (vl_fpi - i)
+                if (i > vl(self.n_pts, l) - a):  # everything above this conductor level has zero l**a torsion, since vl(e1) < a
+                    break
+                if i == a:
+                    level_sum = jordan_totient(l**a) * self.field.Hf_tilde(f)
                     # we reached full torsion
-                    H_tilde_max = self.field.Hf_tilde(f)
-                    sum_at_l += jordan_totient(l**a) * H_tilde_max
-                    break # done here
+                    sum_at_l += level_sum
+                    break
+                if i == vl(self.a_pi - 1, l):
+                    # we reached max torsion allowed
+                    level_sum = l**i * euler_phi(l**a) * self.field.Hf_tilde(f)
+                    sum_at_l += level_sum
+                    break
 
-                # n1 = l**e
-                # n2 = l ** (vl_E - e)
-                nc = self.field.h_tilde(f)# * self._inert_factor(f) # skip inert here redo this
-                # np = elements_of_exact_order(l**a, n1, n2)
-                np = l**e*euler_phi(l**a)
-                # if np != test_np:
-                #    Logger.cprint(
-                #        f"Discrepancy in number of points of exact order N={N} at l={l} for conductor f={f}: computed np={np}, expected np={test_np} (e={e}, a={a}, n1={n1}, n2={n2}), group_inv={fmt_invariants(self._full_group_structure(f))})",
-                #        Logger.ERROR,
-                #    )
-                ##l**e*euler_phi(l**a) if e < a else jordan_totient(l**a)#
-                # grp_inv = self._full_group_structure(f)
-                # np_test = l**e*euler_phi(l**a)
-                # np_test2 = l**(2*a)*(1-l**(-2))
-                # jd = jordan_totient(l**a)
-                sum_at_l += np * nc
-                '''conductor_levels.append(ConductorRecord(
-                    f=f,
-                    n_curves=nc if np > 0 else 0,
-                    n_pts_exact_order=np,
-                    n_curves_weighted=0,
-                    torsion_inv=[0, 0],
-                    inv=[0, 0],
-                    full_inclusion=False,
-                ))'''
+                # xi = Fraction(l - legendre(self.field.D, l), l) if f > 1 else Fraction(1)
+                level_sum = l ** (vl(self.f_pi, l)) * euler_phi(l**a) * xi
+                # sum_at_l += level_sum
+                #level_sum = l**i * euler_phi(l**a) * self.field.h_tilde(f)
+                sum_at_l += l**i * euler_phi(l**a) * self.field.h_tilde(f)
 
-            # H_tilde_max = self.field.Hf_tilde(l**(vl_f_pi - vl_a_pi))
-
+            '''
             total_sum *= sum_at_l
 
+            '''if has_full_inclusion:
+                num_non_max = a-1
+                num_max = vl_fpi - num_non_max
+                total_sum *= (l**vl_fpi * euler_phi(l**a) * xi * num_non_max + jordan_totient(l**a) * num_max)
+                # = vl(self.f_pi, l)-(a+1)
+            else:
+                l_tower_height = min(vl_fpi, max(0, vl(self.n_pts, l) - a))
+                # this is the total contrib if not full
+                # we have total vl_fpi levels, all contrib equal sum
+                total_sum *= l**vl_fpi * euler_phi(l**a) * xi * (
+                    l_tower_height - 1
+                ) + l**vl_fpi * euler_phi(l**a)'''
+
         H_coprime_ = self.field.Hf_tilde(coprime_part(f_pi_reduced, N))
-        # total_sum *= hOK * H_coprime_
+        final_value = total_sum * Fraction(hOK * H_coprime_, self.field.u_index * 2)
 
-        '''total_sum_no_weight = sum(
-            cl.n_pts_exact_order * cl.n_curves * hOK for cl in conductor_levels
-        )
-        total_sum_test = 0
-        total_sum_test_2 = 0
-
-        ## skip inert since its only for q even and ss curves
-        for d in divisors(f_pi_reduced):
-            ##if not N % d == 0:
-            ##    continue
-            ##if not (self.a_pi-1) % d == 0:
-            ##    continue
-            inv_d = math.gcd(N,d) ## here use the corpime aprt and skip this
-            inv_d = math.gcd(inv_d, self.a_pi - 1)
-            f = f_pi_reduced // d
-            total_sum_test += (
-                elements_of_exact_order(N, inv_d, self.n_pts // inv_d)
-                * self.field.h_tilde(f)
-                * self._inert_factor(f)
-            )
-        total_sum_test *= hOK
-        # we KNOW that N divides E here
-        total_sum_test_2 = 1
-        for l,a in factorize(N):
-            vl_E = vl(self.n_pts, l)
-            vl_f_pi = vl(self.f_pi, l)
-            vl_a_pi = vl(self.a_pi - 1, l)
-            # n = min(vl_a_pi, vl_f_pi)
-            # print(f"l={l}  a={a}  n={n}")
-            sum_at_l = 0
-            for i in range(0, vl_f_pi + 1):
-                e = min(vl_a_pi, i)
-                n1 = l**e
-                n2 = l ** (vl_E - e)
-                f = l**(vl_f_pi - i)
-                sum_at_l += (
-                    elements_of_exact_order(l**a, n1, n2)
-                    * self.field.h_tilde(f)
-                    * self._inert_factor(f)
-                )
-            total_sum_test_2 *= sum_at_l
-        f_coprime = coprime_part(f_pi_reduced, N)
-        H_coprime_ = self.field.Hf_tilde(f_coprime)
-        # total_sum_test_2 *= self.field.Hf_tilde(coprime_conductors)
-        total_sum_test_2 *= hOK * H_coprime_
-        clr = Logger.ERROR if (total_sum_no_weight != total_sum_test or total_sum_no_weight != total_sum_test_2) else Logger.SUCCESS
-        if clr == Logger.ERROR:
-            print(f"p={self.p}, f_coprime={f_coprime}, H_coprime_={H_coprime_}, hOK={hOK}, f_pi={fmt_factored(self.f_pi)}, N={fmt_factored(N)}, a_pi={fmt_factored(self.a_pi-1)}")
-            Logger.cprint(f"t={self.t}  total_sum_no_weight={total_sum_no_weight}  total_sum_test={total_sum_test}, total_sum_test_2={total_sum_test_2}", clr)
-        # print(f"t={self.t}  total_sum_no_weight={total_sum_no_weight}  total_sum_test={total_sum_test}")'''
         return TorsionRecord(
-            n_curves=0,#sum(cl.n_curves for cl in conductor_levels) * H_coprime_ * hOK,
-            n_points=0,#sum(
-                #cl.n_pts_exact_order for cl in conductor_levels
-            #),  # we only want to know exact nu pts PER curve in this level
-            value=total_sum * Fraction(hOK * H_coprime_, self.field.u_index * 2),
-            conductor_levels=[]#conductor_levels,
+            n_curves=0,  # sum(cl.n_curves for cl in conductor_levels) * H_coprime_ * hOK,
+            n_points=0,  # sum(
+            # cl.n_pts_exact_order for cl in conductor_levels
+            # ),  # we only want to know exact nu pts PER curve in this level
+            value=final_value,
+            conductor_levels=[],  # conductor_levels,
         )
 
 

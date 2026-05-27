@@ -22,7 +22,7 @@ def format_result_data(data: TrFq_SGamma1Nk, level: int) -> list[Data]:
         Data("Y1(N)", data.curves_term),
         Data("Computed", data.val),
         Data("Ref", data.reference_val),
-        Data("Error", data.error, fmt="factors"),  # , fmt="factors"
+        Data("Error", data.error),  # , fmt="factors"
         Data("#E", data.num_curves),
         Data("#E(SS)", data.num_ss_curves),
         Data("#P", data.num_points),

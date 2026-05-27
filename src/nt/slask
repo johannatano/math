@@ -1,0 +1,83 @@
+for i in range(0, vl_fpi + 1):
+                f = l ** (vl_fpi - i)
+                grp_inv = self._full_group_structure(f)
+                torsion_inv = self._torsion_subgroup(f, l**a)
+                '''print(
+                    f" at l={l}, i={i}, group_inv={fmt_invariants(grp_inv)}, torsion_inv={fmt_invariants(torsion_inv)}"
+                )'''
+
+                if i > vl(self.n_pts, l) - a: # everything above this conductor level has zero l**a torsion, since vl(e1) < a
+                    break
+                #    pass
+                #    '''print(
+                #        f"  skipping conductor level i={i} since (vl(E)-a) cap={vl(self.n_pts, l) - a} implies no l^{a} torsion above this level, vl(self.a_pi - 1, l)={vl(self.a_pi - 1, l)}"
+                #    )'''
+                #    # break
+                # current conductor level, stepping from bottom up
+                if i == a:
+                    level_sum = jordan_totient(l**a) * self.field.Hf_tilde(f)
+                    # we reached full torsion
+                    sum_at_l += level_sum
+                    grp_inv = self._full_group_structure(f)
+                    torsion_inv = self._torsion_subgroup(f, l**a)
+                    nc = self.field.Hf_tilde(f)
+                    np = elements_of_exact_order(l**a, grp_inv[0], grp_inv[1])
+                    for d in divisors(f):
+                        _nc = self.field.h_tilde(d)
+                        _level_sum = jordan_totient(l**a) * _nc
+                        _grp_inv = self._full_group_structure(d)
+                        _torsion_inv = self._torsion_subgroup(d, l**a)
+
+                        _np = elements_of_exact_order(l**a, _grp_inv[0], _grp_inv[1])
+                        Logger.cprint(
+                            f"  divisor d={d}, contribution at l={l}, i={i}, f={d}: {level_sum}, grp_inv={fmt_invariants(_grp_inv)}, torsion_inv={fmt_invariants(_torsion_inv)}, nc={_nc}, np={_np}, sanity check={_nc*_np}, xi={xi}",
+                            Logger.INFO,
+                        )
+                    Logger.cprint(
+                        f"contribution at l={l}, i={i}, f={f}: {level_sum}, grp_inv={fmt_invariants(grp_inv)}, torsion_inv={fmt_invariants(torsion_inv)}, nc={nc}, np={np}, sanity check={nc*np}, xi={xi}",
+                        Logger.SUCCESS,
+                    )
+                    break  # early exit, all curves above have same torsion pts
+                if i == vl(self.a_pi - 1, l):
+                    # we reached max torsion allowed
+                    level_sum = l**i * euler_phi(l**a) * self.field.Hf_tilde(f)
+                    sum_at_l += level_sum
+
+                    grp_inv = self._full_group_structure(f)
+                    torsion_inv = self._torsion_subgroup(f, l**a)
+                    nc = self.field.h_tilde(f)
+                    np = elements_of_exact_order(l**a, grp_inv[0], grp_inv[1])
+                    '''Logger.cprint(
+                        f"contribution at l={l}, i={i}, f={f}: {level_sum}, grp_inv={fmt_invariants(grp_inv)}, torsion_inv={fmt_invariants(torsion_inv)}, nc={nc}, np={np}, sanity check={nc*np}", Logger.WARNING
+                    )'''
+
+                    # break  # early exit, all curves above have same torsion pts
+                # keep waling upwards in the conductor tower
+                # sum_at_l += l**i * euler_phi(l**a) * self.field.h_tilde(f)
+
+                '''sum_at_l += (
+                    euler_phi(l**a)
+                    * l ** (vl(self.f_pi, l))
+                    * Fraction(l - legendre(self.field.D, l), l)
+                )'''
+
+                '''sum_at_l += (
+                    l**i
+                    * euler_phi(l**a)
+                    * f
+                    * Fraction(l - legendre(self.field.D, l), l)
+                )'''
+
+                level_sum = l ** (vl(self.f_pi, l)) * euler_phi(l**a) * xi
+                sum_at_l += level_sum
+
+                grp_inv = self._full_group_structure(f)
+                torsion_inv = self._torsion_subgroup(f, l**a)
+                nc = self.field.h_tilde(f)
+                np = elements_of_exact_order(l**a, grp_inv[0], grp_inv[1])
+                Logger.cprint(
+                    f"contribution at l={l}, i={i}, f={f}: {level_sum}, grp_inv={fmt_invariants(grp_inv)}, torsion_inv={fmt_invariants(torsion_inv)}, nc={nc}, np={np}, sanity check={nc*np}, xi={xi}, vl_E={vl(self.n_pts, l)}, vl_fpi={vl(self.f_pi, l)}, vl_api={vl(self.a_pi - 1, l)}",
+                    Logger.NORMAL,
+                )
+
+            total_sum *= sum_at_l
