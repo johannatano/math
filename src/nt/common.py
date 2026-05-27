@@ -8,6 +8,15 @@ def euler_phi(n):
     return result
 
 
+def jordan_totient(n):
+    """Number of elements of exact order n in (Z/n x Z/n) — counts pairs of generators."""
+    result = n**2
+    for p, _ in factorize(n):
+        result *= (p**2 - 1)
+        result //= p**2
+    return result
+
+
 def legendre(a, p):
     if p == 2:
         return 0 if a % 2 == 0 else (1 if a % 8 in (1, 7) else -1)
@@ -125,4 +134,3 @@ def sgn(x):
 def equiv(a, b):
     val = a % b
     return -1 if val == b - 1 else val
-

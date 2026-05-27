@@ -17,6 +17,8 @@ from nt.common import (
     sgn,
     equiv,
     coprime_part,
+    euler_phi,
+    jordan_totient,
 )
 
 from utils.logging import Logger
@@ -27,9 +29,11 @@ class ConductorRecord:
     f: int
     n_curves: int            # h(f), unweighted curve count
     n_pts_exact_order: int   # |{x in E(F_q)[N] : ord(x) = N}|
-    value: Fraction          # n_pts_exact_order * hw(f), the weighted contribution
+    full_inclusion: bool = False  # whether to include this conductor's curves in the final count (e.g. for SS, we only want to include the f=1 curves)
+    value: Fraction = field(default_factory=Fraction)
     torsion_inv: tuple[int, int] = (0, 0)  # N-torsion subgroup invariants (e1, e2)
     inv: tuple[int, int] = (0, 0)  # full group invariants (e1, e2)
+    n_curves_weighted: Fraction = field(default_factory=Fraction)
 
 
 @dataclass
@@ -159,14 +163,8 @@ class IsogenyClass:
 
         return (math.gcd(N, e1), math.gcd(N, e2))
 
-    def _compute_torsion_at(self, f: int, N: int, compute_full: bool = False) -> ConductorRecord:
-
-        grp_inv = self._full_group_structure(f)
-        torsion_inv = self._torsion_subgroup(f, N, compute_full)
-
-        if self.t == -16:
-            print(f"f={f}, N={N}, grp_inv={grp_inv}, torsion_inv={torsion_inv}")
-        p_inert = (
+    def _inert_factor(self, f: int) -> int:
+        return (
             2
             if (
                 not self.ordinary
@@ -175,19 +173,49 @@ class IsogenyClass:
             )
             else 1
         )
-        n_pts = elements_of_exact_order(N, torsion_inv[0], torsion_inv[1])
-        n_curves = self.field.h(f) * p_inert
+    def _compute_torsion_at(self, f: int, N: int, compute_full: bool = False) -> ConductorRecord:
+
+        grp_inv = self._full_group_structure(f)
+        torsion_inv = self._torsion_subgroup(f, N, compute_full)
+
+        p_inert = self._inert_factor(f)
+
+        _n_pts = elements_of_exact_order(N, torsion_inv[0], torsion_inv[1])
+        n_curves = self.field.h_tilde(f) * p_inert
         n_curves_weighted = self.field.hw(f) * p_inert
+
+        '''clr = Logger.ERROR if _n_pts == 0 else Logger.SUCCESS
+        if vl(self.f_pi, 2) > 3 and vl(self.n_pts, 2) > 4:
+            Logger.cprint(
+                f"t={self.t}, f_pi={self.f_pi}, f={f}, inv={fmt_invariants(grp_inv)}, torsion_inv={fmt_invariants(torsion_inv)}, #P_{N}={_n_pts}", clr
+            )'''
+
+        has_full = torsion_inv[0] % N == 0 and torsion_inv[1] % N == 0
+        clr = Logger.SUCCESS if has_full else Logger.ERROR
+        '''Logger.cprint(
+            f"D_K={self.field.D}, t={self.t}, f_pi={self.f_pi}, SS={not self.ordinary}, full_inclusion={has_full}, leg(DK/N)={legendre(f**2*self.field.D, N)}, torsion_inv={fmt_invariants(torsion_inv)}, group_inv={fmt_invariants(grp_inv)}, n_pts_exact_order={_n_pts}",
+            clr,
+        )'''
+
         return ConductorRecord(
             f=f,
-            n_curves=n_curves if n_pts > 0 else 0,
-            n_pts_exact_order=n_pts,
-            value=n_pts * n_curves_weighted,
+            n_curves=n_curves if _n_pts > 0 else 0,
+            n_pts_exact_order=_n_pts,
+            n_curves_weighted=n_curves_weighted,
             torsion_inv=torsion_inv,
             inv=grp_inv,
+            full_inclusion=has_full,
         )
 
     def _compute_torsion_record(self, N: int, flatten: bool = True) -> TorsionRecord:
+        if N == 1:
+            n_curves = self.size
+            return TorsionRecord(
+                n_curves=n_curves,
+                n_points=1,
+                value=Fraction(n_curves, self.field.u_index * 2),
+                conductor_levels=[],
+            )
         if self.n_pts % N != 0:
             return TorsionRecord(n_curves=0, n_points=0, value=Fraction(0), conductor_levels=[])
         # Strip p-part unconditionally — conductors divisible by p are always excluded
@@ -198,26 +226,153 @@ class IsogenyClass:
         # Only valid for generic imaginary quadratic fields (D_K < -4) — Eisenstein
         # and Gaussian fields have non-standard aut groups at f=1 that break
         # multiplicativity of h(O_f) in the coprime tower.
-        flatten = False
-        can_flatten = flatten and not self.is_quaternion and N > 1
-        padding = 1
-        if can_flatten:
+        # flatten = True
+        # can_flatten = flatten and not self.is_quaternion and N > 1
+        # padding = 1
+        '''if can_flatten:
             coprime = coprime_part(f_pi_reduced, N)
             f_pi_reduced //= coprime
             f_list = divisors(f_pi_reduced)
             if coprime > 1:
                 H_coprime = self.field.Hf_inv(coprime)
         else:
-            f_list = divisors(f_pi_reduced)
+            f_list = divisors(f_pi_reduced)'''
 
-        conductor_levels = [
+        '''conductor_levels = [
             self._compute_torsion_at(f, N) for f in f_list
-        ]
+        ]'''
+
+        # has_full = any(cl.full_inclusion for cl in conductor_levels)
+
+        hOK = self.field.O_K.h
+
+        if self.is_quaternion:
+            # BRUTE FORCE BUT ONLY ONE LEVEL HERE
+            conductor_levels = [
+                self._compute_torsion_at(f, N) for f in divisors(f_pi_reduced)
+            ]
+            return TorsionRecord(
+                n_curves=sum(cl.n_curves * H_coprime * hOK for cl in conductor_levels),
+                n_points=sum(
+                    cl.n_pts_exact_order for cl in conductor_levels
+                ),  # we only want to know exact nu pts PER curve in this level
+                value=sum(
+                    cl.n_pts_exact_order * cl.n_curves_weighted * H_coprime
+                    for cl in conductor_levels
+                ),
+                conductor_levels=conductor_levels,
+            )
+
+        total_sum = 1
+        conductor_levels = []
+        for l, a in factorize(N):
+            vl_E = vl(self.n_pts, l)
+            vl_f_pi = vl(self.f_pi, l)
+            vl_a_pi = vl(self.a_pi - 1, l)
+            sum_at_l = 0
+
+            l_height_avail = min(vl_f_pi, max(0, vl_E - a))
+            l_height_allowed = min(l_height_avail, vl_a_pi) ## cap at a_pi-1
+            #l_height_needed = max(0, vl_E - a)
+
+            for i in range(0, vl_f_pi + 1):  # we do NOT stop at e
+
+                e = min(i, vl_a_pi, a)  # we also need to stop at the point where the group invariants become trivial, since then the number of points of exact order N also becomes trivial
+                e = max(0, vl_E-a) ## makes sure vl(e2) = a
+
+                n1 = l**e
+                n2 = l ** (vl_E - e)
+                f = l ** (vl_f_pi - i)
+                nc = self.field.h_tilde(f) * self._inert_factor(f)
+                np = elements_of_exact_order(l**a, n1, n2)
+
+                test_np = l**e*euler_phi(l**a) if e < a else jordan_totient(l**a)
+                if np != test_np:
+                    Logger.cprint(
+                        f"Discrepancy in number of points of exact order N={N} at l={l} for conductor f={f}: computed np={np}, expected np={test_np} (e={e}, a={a}, n1={n1}, n2={n2}), group_inv={fmt_invariants(self._full_group_structure(f))})",
+                        Logger.ERROR,
+                    )
+                ##l**e*euler_phi(l**a) if e < a else jordan_totient(l**a)#
+                # grp_inv = self._full_group_structure(f)
+                # np_test = l**e*euler_phi(l**a)
+                # np_test2 = l**(2*a)*(1-l**(-2))
+                # jd = jordan_totient(l**a)
+                sum_at_l += np * nc
+                '''conductor_levels.append(ConductorRecord(
+                    f=f,
+                    n_curves=nc if np > 0 else 0,
+                    n_pts_exact_order=np,
+                    n_curves_weighted=0,
+                    torsion_inv=[0, 0],
+                    inv=[0, 0],
+                    full_inclusion=False,
+                ))'''
+
+            # H_tilde_max = self.field.Hf_tilde(l**(vl_f_pi - vl_a_pi))
+
+            total_sum *= sum_at_l
+
+        f_coprime = coprime_part(f_pi_reduced, N)
+        H_coprime_ = self.field.Hf_tilde(f_coprime)
+        # total_sum *= hOK * H_coprime_
+
+        '''total_sum_no_weight = sum(
+            cl.n_pts_exact_order * cl.n_curves * hOK for cl in conductor_levels
+        )
+        total_sum_test = 0
+        total_sum_test_2 = 0
+
+        ## skip inert since its only for q even and ss curves
+        for d in divisors(f_pi_reduced):
+            ##if not N % d == 0:
+            ##    continue
+            ##if not (self.a_pi-1) % d == 0:
+            ##    continue
+            inv_d = math.gcd(N,d) ## here use the corpime aprt and skip this
+            inv_d = math.gcd(inv_d, self.a_pi - 1)
+            f = f_pi_reduced // d
+            total_sum_test += (
+                elements_of_exact_order(N, inv_d, self.n_pts // inv_d)
+                * self.field.h_tilde(f)
+                * self._inert_factor(f)
+            )
+        total_sum_test *= hOK
+        # we KNOW that N divides E here
+        total_sum_test_2 = 1
+        for l,a in factorize(N):
+            vl_E = vl(self.n_pts, l)
+            vl_f_pi = vl(self.f_pi, l)
+            vl_a_pi = vl(self.a_pi - 1, l)
+            # n = min(vl_a_pi, vl_f_pi)
+            # print(f"l={l}  a={a}  n={n}")
+            sum_at_l = 0
+            for i in range(0, vl_f_pi + 1):
+                e = min(vl_a_pi, i)
+                n1 = l**e
+                n2 = l ** (vl_E - e)
+                f = l**(vl_f_pi - i)
+                sum_at_l += (
+                    elements_of_exact_order(l**a, n1, n2)
+                    * self.field.h_tilde(f)
+                    * self._inert_factor(f)
+                )
+            total_sum_test_2 *= sum_at_l
+        f_coprime = coprime_part(f_pi_reduced, N)
+        H_coprime_ = self.field.Hf_tilde(f_coprime)
+        # total_sum_test_2 *= self.field.Hf_tilde(coprime_conductors)
+        total_sum_test_2 *= hOK * H_coprime_
+        clr = Logger.ERROR if (total_sum_no_weight != total_sum_test or total_sum_no_weight != total_sum_test_2) else Logger.SUCCESS
+        if clr == Logger.ERROR:
+            print(f"p={self.p}, f_coprime={f_coprime}, H_coprime_={H_coprime_}, hOK={hOK}, f_pi={fmt_factored(self.f_pi)}, N={fmt_factored(N)}, a_pi={fmt_factored(self.a_pi-1)}")
+            Logger.cprint(f"t={self.t}  total_sum_no_weight={total_sum_no_weight}  total_sum_test={total_sum_test}, total_sum_test_2={total_sum_test_2}", clr)
+        # print(f"t={self.t}  total_sum_no_weight={total_sum_no_weight}  total_sum_test={total_sum_test}")'''
         return TorsionRecord(
-            n_curves=sum(cl.n_curves * H_coprime for cl in conductor_levels),
-            n_points=sum(cl.n_pts_exact_order * H_coprime for cl in conductor_levels),
-            value=sum(cl.value * H_coprime for cl in conductor_levels),
-            conductor_levels=conductor_levels,
+            n_curves=0,#sum(cl.n_curves for cl in conductor_levels) * H_coprime_ * hOK,
+            n_points=0,#sum(
+                #cl.n_pts_exact_order for cl in conductor_levels
+            #),  # we only want to know exact nu pts PER curve in this level
+            value=total_sum * Fraction(hOK * H_coprime_, self.field.u_index * 2),
+            conductor_levels=[]#conductor_levels,
         )
 
 

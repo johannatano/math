@@ -82,7 +82,7 @@ class Logger:
         if not visible_indices:
             return
 
-        headers = [rows[0][i].label for i in visible_indices]
+        headers = ["|  " +  rows[0][i].label + " " for i in visible_indices]
         widths = [len(h) for h in headers]
 
         # Pre-format every cell and compute column widths

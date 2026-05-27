@@ -68,8 +68,8 @@ class Order:
     @cached_property
     def unit_index(self) -> int:
         """[O_K^× : O_f^×] — equals 1 for f>1 except field has extra roots of unity."""
-        if self.is_maximal:
-            return 1
+        # if self.is_maximal:
+        #    return 1
         return self.K._maximal_unit_index
 
     @cached_property
@@ -84,12 +84,11 @@ class Order:
         """Return the sub-order of conductor f (must divide self.f)."""
         return self.K.order(f)
 
-
 class QuadraticOrder(Order):
     @cached_property
     def h_prime_prod(self) -> Fraction:
-        if self.is_maximal:
-            return Fraction(1)
+        ##if self.is_maximal:
+        ##    return Fraction(1)
         result = Fraction(self.f)
         for p, _ in factorize(self.f):
             result *= Fraction(p - legendre(self.K.D, p), p)
@@ -99,7 +98,11 @@ class QuadraticOrder(Order):
     def h(self) -> int:
         if self.is_maximal:
             return _H(self.K.D)
-        return Fraction(self.K.O_K.h, self.unit_index) * self.h_prime_prod
+        '''print(
+            f"Computing h={Fraction(self.K.O_K.h, self.unit_index) * self.h_prime_prod}"
+        )'''
+        return Fraction(self.K.O_K.h, 1) * self.h_prime_prod
+        ##return Fraction(self.K.O_K.h, 1) * self.h_prime_prod
         '''for p, _ in factorize(self.f):
             result *= Fraction(p - legendre(self.K.D, p), p)
         assert (
@@ -110,8 +113,10 @@ class QuadraticOrder(Order):
     @cached_property
     def hw(self) -> int:
         """Returns weight by 1/|Aut| (Schoof 1987, Thm 4.6)."""
+        # self.K._maximal_unit_index * 2 if self.is_maximal else
         return Fraction(
-            self.h, self.K._maximal_unit_index * 2 if self.is_maximal else 2 #this re-normalizes the class number into weighted by aut
+            self.h,
+            self.K._maximal_unit_index * 2,  # this re-normalizes the class number into weighted by aut
         )
 
 
@@ -153,6 +158,7 @@ class NumberField:
     def __init__(self, D: int) -> None:
         self._disc, self._conductor = NumberField._D0(D)
         self._order_cache: dict[int, Order] = {}
+        self._maximal_unit_index = 1
 
     @cached_property
     def D(self) -> int:
@@ -163,6 +169,9 @@ class NumberField:
         return self.order(1)
 
     def h(self, f:int) -> int:
+        return self.order(f).h
+
+    def h_tilde(self, f: int) -> int:
         return self.order(f).h
 
     def hw(self, f: int) -> int:
@@ -178,6 +187,10 @@ class NumberField:
         if f not in self._order_cache:
             self._order_cache[f] = self._make_order(f)
         return self._order_cache[f]
+
+    @cached_property
+    def u_index(self) -> int:
+        return self._maximal_unit_index
 
 
 # --- Imaginary quadratic fields and quaternion algebras ---
@@ -215,16 +228,30 @@ class ImaginaryQuadraticField(NumberField):
         )
 
     def Hf(self, f: int) -> int:
+
+        for e in divisors(f):
+            print(
+                f"  divisor e={e}, h(e)={self.order(e).h}, unit_index={self.order(e).unit_index}, adding={self.order(e).h}"
+        )
         return sum(self.order(e).h for e in divisors(f))
 
     def Hf_inv(self, f: int) -> int:
         """H(D_K · f²) using cached order class numbers — avoids pari calls.
         H'(D_K · f²)  = (Σ_{e | f} h(e)*h(e).unit_idx) // h(1)
         """
-        return sum(self.order(e).h * self.order(e).unit_index for e in divisors(f)) // self.O_K.h
+        return sum(self.order(e).h for e in divisors(f)) // self.O_K.h
+
+    def Hf_tilde(self, f: int) -> int:
+        """H(D_K · f²) using cached order class numbers — avoids pari calls.
+        H'(D_K · f²)  = (Σ_{e | f} h(e)*h(e).unit_idx) // h(1)
+        """
+        return sum(self.order(e).h_prime_prod for e in divisors(f))
 
     def _make_order(self, f: int) -> QuadraticOrder:
         return QuadraticOrder(self, f)
+
+    def h_tilde(self, f: int) -> int:
+        return self.order(f).h_prime_prod
 
 
 class QuaternionAlgebra(NumberField):

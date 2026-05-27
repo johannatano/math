@@ -55,6 +55,7 @@ class TrFq_SGamma1Nk:
     num_ss_curves: int = 0
     num_points: int = 0
     q: int = 0
+    p: int = 0
     traces: list[int] = None
 
 
@@ -129,7 +130,11 @@ class HeckeOperator:
             traces.append(_)
 
         eis_term = self.eis_term(q)
+
         val = -eis_term - curves_term
+
+        if (k - 2) == 0:
+            val += q+(1 if math.gcd(q, N) == 1 else 0)  # add back the "1" from the h_k sum, which is only there for k=2
 
         ref = 0
         if self.target.form is not None:
@@ -146,4 +151,5 @@ class HeckeOperator:
             num_points=num_points,
             traces=traces,
             q=q,
+            p=p,
         )
