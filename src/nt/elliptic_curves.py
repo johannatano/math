@@ -271,27 +271,27 @@ class IsogenyClass:
             vl_a_pi = vl(self.a_pi - 1, l)
             sum_at_l = 0
 
-            l_height_avail = min(vl_f_pi, max(0, vl_E - a))
-            l_height_allowed = min(l_height_avail, vl_a_pi) ## cap at a_pi-1
-            #l_height_needed = max(0, vl_E - a)
+            n = min(vl_f_pi, max(0, vl_E - a)) # anything above this yields l**a nmid e2, ie zero pts
+            for i in range(0, n + 1):  # we do NOT stop at e
+                f = l ** (vl_f_pi - i) # current conductor level, stepping from bottom up
+                # now we compute the actual invariants allowed by ring theory
+                e = min(i, vl_a_pi)  # we also need to stop at the point where the group invariants become trivial, since then the number of points of exact order N 
+                if e == a:
+                    # we reached full torsion
+                    H_tilde_max = self.field.Hf_tilde(f)
+                    sum_at_l += jordan_totient(l**a) * H_tilde_max
+                    break # done here
 
-            for i in range(0, vl_f_pi + 1):  # we do NOT stop at e
-
-                e = min(i, vl_a_pi, a)  # we also need to stop at the point where the group invariants become trivial, since then the number of points of exact order N also becomes trivial
-                e = max(0, vl_E-a) ## makes sure vl(e2) = a
-
-                n1 = l**e
-                n2 = l ** (vl_E - e)
-                f = l ** (vl_f_pi - i)
-                nc = self.field.h_tilde(f) * self._inert_factor(f)
-                np = elements_of_exact_order(l**a, n1, n2)
-
-                test_np = l**e*euler_phi(l**a) if e < a else jordan_totient(l**a)
-                if np != test_np:
-                    Logger.cprint(
-                        f"Discrepancy in number of points of exact order N={N} at l={l} for conductor f={f}: computed np={np}, expected np={test_np} (e={e}, a={a}, n1={n1}, n2={n2}), group_inv={fmt_invariants(self._full_group_structure(f))})",
-                        Logger.ERROR,
-                    )
+                # n1 = l**e
+                # n2 = l ** (vl_E - e)
+                nc = self.field.h_tilde(f)# * self._inert_factor(f) # skip inert here redo this
+                # np = elements_of_exact_order(l**a, n1, n2)
+                np = l**e*euler_phi(l**a)
+                # if np != test_np:
+                #    Logger.cprint(
+                #        f"Discrepancy in number of points of exact order N={N} at l={l} for conductor f={f}: computed np={np}, expected np={test_np} (e={e}, a={a}, n1={n1}, n2={n2}), group_inv={fmt_invariants(self._full_group_structure(f))})",
+                #        Logger.ERROR,
+                #    )
                 ##l**e*euler_phi(l**a) if e < a else jordan_totient(l**a)#
                 # grp_inv = self._full_group_structure(f)
                 # np_test = l**e*euler_phi(l**a)
@@ -312,8 +312,7 @@ class IsogenyClass:
 
             total_sum *= sum_at_l
 
-        f_coprime = coprime_part(f_pi_reduced, N)
-        H_coprime_ = self.field.Hf_tilde(f_coprime)
+        H_coprime_ = self.field.Hf_tilde(coprime_part(f_pi_reduced, N))
         # total_sum *= hOK * H_coprime_
 
         '''total_sum_no_weight = sum(
