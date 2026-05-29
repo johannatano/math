@@ -18,9 +18,10 @@ def format_result_data(data: TrFq_SGamma1Nk, level: int) -> list[Data]:
         Data("q", data.q),
         Data("(q,N)", gcd(data.q, level)),
         Data("q mod N", equiv(data.q, level)),
-        Data("Cusps", data.eis_term),
+        Data("Eis", data.eis_term),
+        Data("Cusps", data.cusp_term),
         Data("Y1(N)", data.curves_term),
-        Data("Computed", data.val),
+        Data("Computed", data.val, fmt="factors"),
         Data("Ref", data.reference_val),
         Data("Error", data.error),  # , fmt="factors"
         Data("#E", data.num_curves),

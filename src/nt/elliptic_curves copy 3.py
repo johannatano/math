@@ -57,7 +57,6 @@ class IsogenyClass:
         self.n = n
 
         self.t = t
-
         self.a_pi = (
             (self.t - self.f_pi) // 2 if self.field.D % 4 == 1 else (self.t // 2)
         )
@@ -202,7 +201,7 @@ class IsogenyClass:
 
         return ConductorRecord(
             f=f,
-            n_curves=n_curves,
+            n_curves=n_curves if _n_pts > 0 else 0,
             n_pts_exact_order=_n_pts,
             n_curves_weighted=n_curves_weighted,
             torsion_inv=torsion_inv,
@@ -251,116 +250,33 @@ class IsogenyClass:
         # all other
         value = 1
         f_coprime = f_pi_reduced
-
-        Logger.cprint(
-            f"DK={self.field.D} api={self.a_pi} | Computing torsion for N={N}, f_pi_reduced={f_pi_reduced}, hOK={hOK}",
-            Logger.HEADLINE,
-        )
-
-        conductor_levels = [
-            self._compute_torsion_at(f, N) for f in divisors(f_pi_reduced)
-        ]
-
-        val_ref = 0
-        for c in conductor_levels:
-            Logger.cprint(
-                f"  conductor f={c.f}, n_curves={c.n_curves}, n_pts_exact_order={c.n_pts_exact_order}, torsion_inv={fmt_invariants(c.torsion_inv)}, full_group_inv={fmt_invariants(c.inv)}, full_inclusion={c.full_inclusion}, value_contribution={c.n_pts_exact_order * c.n_curves_weighted}",
-                Logger.INFO,
-            )
-
-            val_ref += c.n_pts_exact_order * c.n_curves
-
-        f_zero = 1
-        has_zero = False
         for l, a in factorize(N):
             vl_fpi = vl(self.f_pi, l)
             vl_E = vl(self.n_pts, l)
+            vl_api = vl(self.a_pi - 1, l)
 
             f_coprime //= l**vl_fpi  # remove full l-adic part
 
-            def Xi():
-                return Fraction(l - legendre(self.field.D, l), l)
+            def Xi_n(i):
+                return 1 if i == 0 else Fraction(l - legendre(self.field.D, l), l)
 
-            def L_l(i):
-                return Fraction(l, l - legendre(self.field.D, l)) if i == 0 else 1#Fraction(l - legendre(self.field.D, l), l)
-
-            def Psi(e, i):
-                res = 1
+            def Psi(i):
                 if i >= a:
-                    res *= Fraction(1, l**i) # weil correction
-                    Logger.cprint(f"Reached i={i} >= a={a}, applying weil correction, contribution now {res}", Logger.WARNING)
-                if e >= a:
-                    res *= jordan_totient(l**a) * Fraction(1, euler_phi(l**a))
-                # else:
-                #    res *= 1#euler_phi(l**a)
-                return res
+                    return (l+1) * Fraction(l**a, l**(2+i))
+                return 1
             sum_at_l = 0
-
-            h_diff = (vl_E - a) - min(vl_fpi,vl(self.a_pi - 1, l))  # this is max vl for (e1, e2)
-            # h_zero = h_diff
-            if h_diff < 0:
-                f_zero *= l ** (vl_fpi + h_diff)
-                has_zero = True
-
-            Logger.cprint(
-                f"h_diff={h_diff}, l-adic zero level={l**(vl_fpi + h_diff) if h_diff < 0 else -1}, vl(self.a_pi - 1, l)={vl(self.a_pi - 1, l)}, (vl_E - a)={(vl_E - a)}"
-            )
-
             for i in range(0, vl_fpi + 1):
-
-                '''if self.a_pi - 1 != 0:
-                    e = min(i, vl(self.a_pi - 1, l))
-                else:
-                    e = i'''
-                e = min(i, vl(self.a_pi - 1, l))
-
-                f = l**(vl_fpi - i)
-
+                e = min(i, vl_api)
                 if vl_E - e < a:
-                    Logger.cprint(
-                        f"f reached ={f}, l-adic zero = {l**(vl_fpi-e)}",
-                        Logger.ERROR,
-                    )
                     # we hit no torsion
                     break
-                print(
-                    f"f_pi={self.f_pi}, f={f}, processing l={l}, i={i}, e={e}, f={f} contribution={Psi(e, i)}"
-                )
-                sum_at_l += Psi(e, i) * L_l(vl_fpi - i)
+                sum_at_l += Psi(e) * Xi_n(vl_fpi - i)
 
-            value *= sum_at_l * Xi()# * l**vl_fpi
-            print(f"l={l}, Xi()={Xi()}")
+            value *= sum_at_l * l**vl_fpi
 
-        xi_total = 1
-        if has_zero:
-            H_zero = self.field.Hf_tilde(f_zero)
-        else:
-            H_zero = 0
-
-        print(
-            f"f_pi={self.f_pi}, h(f_pi)={self.field.h_tilde(f_pi_reduced // f_coprime)}, f_coprime={f_coprime}, f_pi_nonprime={f_pi_reduced // f_coprime}"
-        )
-
-        H_coprime = self.field.Hf_tilde(f_coprime) * (f_pi_reduced // f_coprime)
+        H_coprime = self.field.Hf_tilde(f_coprime)
         value *= Fraction(hOK * H_coprime, self.field.u_index * 2) * euler_phi(N)
 
-        # value *= Fraction(
-        #    hOK * (self.field.Hf_tilde(f_pi_reduced) - H_zero), self.field.u_index * 2
-        # )
-
-        val_ref *= Fraction(hOK, self.field.u_index * 2)
-
-        print(
-            f"has_zero={has_zero}, f_zero={f_zero}, H_zero={H_zero}, H_f={self.field.Hf_tilde(f_pi_reduced)}, f_coprime={f_coprime}, hOK={hOK}, value={value}, val_ref={val_ref}"
-        )
-
-        val = 0
-        for d in divisors(f_pi_reduced):
-            s = elements_of_exact_order(N, d, self.n_pts // d) * self.field.h_tilde(
-                f_pi_reduced // d)
-            val += s
-
-        print(f"NEW VAL: val ={self.field.Hf_tilde(f_coprime) * val * Fraction(hOK, self.field.u_index * 2)}")
         return TorsionRecord(
             n_curves=0,
             n_points=0,  # sum(

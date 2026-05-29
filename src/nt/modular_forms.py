@@ -2,9 +2,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from nt.elliptic_curves import CurvesRecordFq, IsogenyClass
-from nt.common import legendre, factorize, divisors, euler_phi
+from nt.common import legendre, factorize, divisors, euler_phi, valuation as vl
 from utils.logging import Logger
-
+from fractions import Fraction
 
 class CuspForm:
     def __init__(self, N: int, k: int, use_sage=False) -> None:
@@ -47,6 +47,7 @@ class LevelData:
 @dataclass
 class TrFq_SGamma1Nk:
     eis_term: int = 0
+    cusp_term: int = 0
     curves_term: int = 0
     val: int = 0
     reference_val: int = 0
@@ -85,6 +86,51 @@ class HeckeOperator:
             if d in (1, 2) and (q + 1) % Nd == 0:
                 non_split += euler_phi(d) * euler_phi(Nd)
         return (split * 1 + non_split * ((-1) ** self.target.k)) // 2
+
+    def cusps(self, q):
+        split = 1
+        non_split = 1
+
+        _split = 1
+        _non_split = 1
+
+        print(f"Computing cusps contribution for q={q}, level={self.target.N}, weight={self.target.k}")
+        for l, a in factorize(self.target.N):
+
+            l_sum_split = 0
+            l_sum_non_split = 0
+
+            _l_sum_split = 0
+            _l_sum_non_split = 0
+
+            print(f"Processing split")
+            for i in range(max(0, a-vl(q-1, l)), a + 1):
+                d = l**i
+                e = l**(a - i)
+                l_sum_split += euler_phi(d) * euler_phi(e)
+                edge = i == 0 or i == a
+                _l_sum_split += (Fraction(l-1, l) if not edge else 1)
+
+            print(f"Processing non split")
+            h2_max = min(a, 0 if l != 2 else 1)
+            for i in range(max(0, a - vl(q + 1, l)), h2_max + 1):
+                d = l**i
+                e = l ** (a - i)
+                l_sum_non_split += euler_phi(d) * euler_phi(e)
+                edge = i == 0 or i == a
+                _l_sum_non_split += (Fraction(l-1, l) if not edge else 1)
+
+            split *= l_sum_split
+            non_split *= l_sum_non_split
+
+            _split *= _l_sum_split * euler_phi(l**a)
+            _non_split *= _l_sum_non_split * euler_phi(l**a) 
+
+        print(f"Total split cusps contribution: {split}, total non-split cusps contribution: {non_split}")
+        print(f"Total _split cusps contribution: {_split}, total _non_split cusps contribution: {_non_split}")
+        print(f"-"*100)
+
+        return (_split * 1 + _non_split * ((-1) ** self.target.k)) // 2
 
     def get_isogeny_class(self, q: int, t: int):
         if q not in self._curves_cache:
@@ -125,11 +171,12 @@ class HeckeOperator:
             tor = I.get_torsion(N)
             curves_term += I.eval_hk(k - 2) * tor.value
             num_curves += tor.n_curves
-            num_points += tor.n_points
+            # num_points += tor.n_points
             num_ss_curves += tor.n_curves if not I.ordinary else 0
             traces.append(_)
 
         eis_term = self.eis_term(q)
+        cusp_term = self.cusps(q)
 
         val = -eis_term - curves_term
 
@@ -142,6 +189,7 @@ class HeckeOperator:
 
         return TrFq_SGamma1Nk(
             eis_term=-eis_term,
+            cusp_term=-cusp_term,
             curves_term=curves_term,
             val=val,
             reference_val=ref,

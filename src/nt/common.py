@@ -1,6 +1,6 @@
 from __future__ import annotations
 from functools import lru_cache
-
+@lru_cache(maxsize=None)
 def euler_phi(n):
     result = n
     for p, _ in factorize(n):
@@ -8,6 +8,7 @@ def euler_phi(n):
     return result
 
 
+@lru_cache(maxsize=None)
 def jordan_totient(n):
     """Number of elements of exact order n in (Z/n x Z/n) — counts pairs of generators."""
     result = n**2
@@ -17,6 +18,7 @@ def jordan_totient(n):
     return result
 
 
+@lru_cache(maxsize=None)
 def legendre(a, p):
     if p == 2:
         return 0 if a % 2 == 0 else (1 if a % 8 in (1, 7) else -1)
@@ -47,6 +49,7 @@ def fmt_magnitude(n: int) -> str:
     return f"~10^{exp}"
 
 
+@lru_cache(maxsize=None)
 def coprime_part(n: int, m: int) -> int:
     """Largest divisor of n coprime to m — strips all primes of m from n."""
     import math
@@ -96,6 +99,7 @@ def factorize(n):
     return factors
 
 
+@lru_cache(maxsize=None)
 def divisors(n):
     divs = []
     i = 1
@@ -108,6 +112,7 @@ def divisors(n):
     return sorted(divs)
 
 
+@lru_cache(maxsize=None)
 def elements_of_exact_order_exp(ell: int, a: int, e1: int, e2: int) -> int:
     """Number of elements of exact order ell^a in Z/ell^e1 x Z/ell^e2."""
     s1 = min(a, e1)
@@ -115,6 +120,7 @@ def elements_of_exact_order_exp(ell: int, a: int, e1: int, e2: int) -> int:
     return ell ** (s1 + s2) - ell ** (min(a - 1, s1) + min(a - 1, s2))
 
 
+@lru_cache(maxsize=None)
 def elements_of_exact_order(N: int, n1: int, n2: int) -> int:
     """Number of elements of exact order N in Z/n1 x Z/n2.
 
@@ -127,10 +133,12 @@ def elements_of_exact_order(N: int, n1: int, n2: int) -> int:
     return result
 
 
+@lru_cache(maxsize=None)
 def sgn(x):
     return 1 if x > 0 else -1 if x < 0 else 0
 
 
+@lru_cache(maxsize=None)
 def equiv(a, b):
     val = a % b
     return -1 if val == b - 1 else val
